@@ -1,4 +1,4 @@
-<h1 align="center">Jellyfin Spotify Import Plugin</h1>
+<h1 align="center">Jellyfin Self Spotify Import Plugin</h1>
 <h3 align="center">Part of the <a href="https://jellyfin.org/">Jellyfin Project</a></h3>
 
 <div align="center">
@@ -146,7 +146,7 @@ Example with max. differences set to 2:
 
 If you have a track with a name wildly different to its equivalent on Spotify or it's not covered by the existing track matching for other reasons, you can define a "manual mapping entry" for this track. If a given Spotify track in this map is part of a playlist, it will always get matched with the defined Jellyfin track.
 
-Defining an entry can be done via a page on the Jellyfin admin dashboard (at the bottom of the admin panel plugin section you can go to `Spotify Import - Map`). Add a new row there and fill it with the Spotify track information as well as the targeted Jellyfin track ID. To get that ID, navigate to the track in the web UI and paste in its link or click the three dots of it, click on `Copy Stream URI` and paste that into the `Jellyfin Track` field. After parsing the link (click the check mark), you should see the track name instead.
+Defining an entry can be done via a page on the Jellyfin admin dashboard (at the bottom of the admin panel plugin section you can go to `Self Spotify Import - Map`). Add a new row there and fill it with the Spotify track information as well as the targeted Jellyfin track ID. To get that ID, navigate to the track in the web UI and paste in its link or click the three dots of it, click on `Copy Stream URI` and paste that into the `Jellyfin Track` field. After parsing the link (click the check mark), you should see the track name instead.
 When done adding rows, save the map.
 
 > [!TIP]

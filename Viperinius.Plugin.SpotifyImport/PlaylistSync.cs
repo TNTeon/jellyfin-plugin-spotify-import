@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -56,6 +58,7 @@ namespace Viperinius.Plugin.SpotifyImport
             var progressValue = 0d;
             var providerPlaylistCount = _providerPlaylists.Count();
             var providerPlaylistIndexProgress = 0;
+            var allMissingTracks = new List<ProviderTrackInfo>();
             foreach (var providerPlaylist in _providerPlaylists)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -138,14 +141,24 @@ namespace Viperinius.Plugin.SpotifyImport
                     await _libraryManager.UpdateItemAsync(playlist, playlist.GetParent(), updateReason, cancellationToken).ConfigureAwait(false);
                 }
 
-                await FindTracksAndAddToPlaylist(playlist, providerPlaylist, user, progress, new Tuple<double, double>(progressValue, nextProgress), cancellationToken).ConfigureAwait(false);
-
+                var missingTracks = await FindTracksAndAddToPlaylist(playlist, providerPlaylist, user, progress, new Tuple<double, double>(progressValue, nextProgress), cancellationToken).ConfigureAwait(false);
+                allMissingTracks.AddRange(missingTracks);
                 progressValue = nextProgress;
                 progress.Report(progressValue);
             }
+
+            var combineIDString = string.Empty;
+            foreach (var missedTrack in allMissingTracks)
+            {
+                combineIDString += " https://open.spotify.com/track/" + missedTrack.Id;
+                // _logger.LogInformation("downloading missedTrack {ID}", missedTrack.Id);
+            }
+
+            // _logger.LogInformation("Will run command: -m spotdl download {IDs}", combineIDString);
+            TestConsole(combineIDString);
         }
 
-        private async Task FindTracksAndAddToPlaylist(Playlist playlist, ProviderPlaylistInfo providerPlaylistInfo, User user, IProgress<double> progress, Tuple<double, double> progressRange, CancellationToken cancellationToken)
+        private async Task<List<ProviderTrackInfo>> FindTracksAndAddToPlaylist(Playlist playlist, ProviderPlaylistInfo providerPlaylistInfo, User user, IProgress<double> progress, Tuple<double, double> progressRange, CancellationToken cancellationToken)
         {
             var newTracks = new List<Guid>();
             var missingTracks = new List<ProviderTrackInfo>();
@@ -180,6 +193,7 @@ namespace Viperinius.Plugin.SpotifyImport
                     }
                     else
                     {
+                        // TestConsole(providerTrack.Id);
                         missingTracks.Add(providerTrack);
                     }
                 }
@@ -202,6 +216,8 @@ namespace Viperinius.Plugin.SpotifyImport
 
                 await MissingTrackStore.WriteFile(missingFilePath, missingTracks).ConfigureAwait(false);
             }
+
+            return missingTracks;
         }
 
         protected Audio? GetMatchingTrack(string providerId, ProviderTrackInfo providerTrackInfo, out ItemMatchCriteria failedMatchCriterium)
@@ -713,6 +729,63 @@ namespace Viperinius.Plugin.SpotifyImport
                 Plugin.Instance!.Configuration.ItemMatchLevel,
                 Plugin.Instance.Configuration.ItemMatchCriteria);
             return insertedId != null;
+        }
+
+        private void TestConsole(string args)
+        {
+            args = args.Replace("...", string.Empty, StringComparison.Ordinal);
+            // if (!Directory.Exists("/media/Music/spotdl"))
+            // {
+            //     _logger.LogError("Not seeing directory!");
+            // }
+            // else
+            // {
+            //     _logger.LogError("Directory found!");
+            // }
+
+            string command = "/usr/bin/python3";
+            string arguments = "-m spotdl download" + args;
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = arguments,
+                WorkingDirectory = "/media/Music/spotdl",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (Process process = new Process())
+            {
+                process.StartInfo = startInfo;
+
+                // process.OutputDataReceived += (sender, e) =>
+                // {
+                //     if (e.Data != null)
+                //     {
+                //         _logger.LogInformation(
+                //                     "dataReceived{Data}",
+                //                     e.Data);
+                //     }
+                // };
+
+                // // Handle error data line by line
+                // process.ErrorDataReceived += (sender, e) =>
+                // {
+                //     if (e.Data != null)
+                //     {
+                //         _logger.LogInformation(
+                //                     "ERRORdataReceived{Data}",
+                //                     e.Data);
+                //     }
+                // };
+
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                process.WaitForExit();
+            }
         }
     }
 }
