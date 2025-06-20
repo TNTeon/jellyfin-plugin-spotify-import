@@ -440,7 +440,7 @@ namespace Viperinius.Plugin.SpotifyImport
                     if (Plugin.Instance?.Configuration.EnableVerboseLogging ?? false)
                     {
                         _logger.LogInformation(
-                            "> Artist did not match: {Name} [Jellyfin, {Id}], {ProviderName} [Provider]",
+                            "> Artist did not match: {JName} [Jellyfin, {Id}], {PName} [Provider]",
                             artist.Name,
                             artist.Id,
                             string.Join("#", providerTrackInfo.ArtistNames));
@@ -508,7 +508,7 @@ namespace Viperinius.Plugin.SpotifyImport
                     if (Plugin.Instance?.Configuration.EnableVerboseLogging ?? false)
                     {
                         _logger.LogInformation(
-                            "> Album did not match: {Name} [Jellyfin, {Id}], {ProviderName} [Provider]",
+                            "> Album did not match: {JName} [Jellyfin, {Id}], {PName} [Provider]",
                             album.Name,
                             album.Id,
                             providerTrackInfo.AlbumName);
