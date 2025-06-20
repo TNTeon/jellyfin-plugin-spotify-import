@@ -32,6 +32,7 @@ namespace Viperinius.Plugin.SpotifyImport
         private readonly Dictionary<string, string> _userPlaylistIds;
         private readonly ManualMapStore _manualMapStore;
         private readonly DbRepository _dbRepository;
+        private TrackComparison _trackComparison;
 
         public PlaylistSync(
             ILogger<PlaylistSync> logger,
@@ -51,6 +52,7 @@ namespace Viperinius.Plugin.SpotifyImport
             _userPlaylistIds = userPlaylistIds;
             _manualMapStore = manualMapStore;
             _dbRepository = dbRepository;
+            _trackComparison = new TrackComparison(_logger);
         }
 
         public async Task Execute(IProgress<double> progress, CancellationToken cancellationToken = default)
@@ -275,6 +277,7 @@ namespace Viperinius.Plugin.SpotifyImport
             while (artistProviderNextIndex >= 0)
             {
                 var artist = GetArtist(providerTrackInfo, ref artistProviderNextIndex, ref artistJfNextIndex);
+
                 if (artist == null)
                 {
                     failedMatchCriterium |= ItemMatchCriteria.Artists;
@@ -431,12 +434,13 @@ namespace Viperinius.Plugin.SpotifyImport
             if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.Artists) ?? false)
             {
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
-                if (!TrackComparison.ArtistOneContained(artist, providerTrackInfo, level))
+                if (!_trackComparison.ArtistOneContained(artist, providerTrackInfo, level))
                 {
+                    _logger.LogInformation("Tracking artist: {Artist} : Second one is: {TrackInfo}", artist, providerTrackInfo.ArtistNames);
                     if (Plugin.Instance?.Configuration.EnableVerboseLogging ?? false)
                     {
                         _logger.LogInformation(
-                            "> Artist did not match: {Name} [Jellyfin, {Id}], {Name} [Provider]",
+                            "> Artist did not match: {Name} [Jellyfin, {Id}], {ProviderName} [Provider]",
                             artist.Name,
                             artist.Id,
                             string.Join("#", providerTrackInfo.ArtistNames));
@@ -454,7 +458,7 @@ namespace Viperinius.Plugin.SpotifyImport
             if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumArtists) ?? false)
             {
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
-                return TrackComparison.AlbumArtistOneContained(album, providerTrackInfo, level);
+                return _trackComparison.AlbumArtistOneContained(album, providerTrackInfo, level);
             }
 
             return true;
@@ -462,6 +466,8 @@ namespace Viperinius.Plugin.SpotifyImport
 
         private MusicAlbum? GetAlbum(MusicArtist artist, ProviderTrackInfo providerTrackInfo, ref int nextAlbumIndex)
         {
+            _logger.LogInformation("artist reads: {Artist} With ID: {ID}", artist, artist.Id);
+            _logger.LogInformation("artist.Children reads: {Children}", artist.Children);
             var albums = artist.Children;
             if (!albums.Any())
             {
@@ -471,7 +477,9 @@ namespace Viperinius.Plugin.SpotifyImport
                     AlbumArtistIds = new[] { artist.Id },
                     IncludeItemTypes = new[] { BaseItemKind.MusicAlbum }
                 });
+                _logger.LogInformation("No children, finding albums: {Albums}", albums);
                 albums ??= new List<MediaBrowser.Controller.Entities.BaseItem>();
+                _logger.LogInformation("No children, finding albums: {Albums}", albums);
             }
 
             var item = albums.ElementAtOrDefault(nextAlbumIndex);
@@ -495,12 +503,12 @@ namespace Viperinius.Plugin.SpotifyImport
             if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumName) ?? false)
             {
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
-                if (!TrackComparison.AlbumNameEqual(album, providerTrackInfo, level).ComparisonResult)
+                if (!_trackComparison.AlbumNameEqual(album, providerTrackInfo, level).ComparisonResult)
                 {
                     if (Plugin.Instance?.Configuration.EnableVerboseLogging ?? false)
                     {
                         _logger.LogInformation(
-                            "> Album did not match: {Name} [Jellyfin, {Id}], {Name} [Provider]",
+                            "> Album did not match: {Name} [Jellyfin, {Id}], {ProviderName} [Provider]",
                             album.Name,
                             album.Id,
                             providerTrackInfo.AlbumName);
@@ -531,7 +539,7 @@ namespace Viperinius.Plugin.SpotifyImport
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
                 if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.TrackName) ?? false)
                 {
-                    var checkResult = TrackComparison.TrackNameEqual(item, providerTrackInfo, level);
+                    var checkResult = _trackComparison.TrackNameEqual(item, providerTrackInfo, level);
                     if (!checkResult.ComparisonResult || checkResult.MatchedLevel == null || checkResult.MatchedPrio == null)
                     {
                         continue;
@@ -583,30 +591,30 @@ namespace Viperinius.Plugin.SpotifyImport
             return false;
         }
 
-        private static bool ItemMatchesTrackInfo(Audio audioItem, ProviderTrackInfo trackInfo, out ItemMatchCriteria failedCriterium)
+        private bool ItemMatchesTrackInfo(Audio audioItem, ProviderTrackInfo trackInfo, out ItemMatchCriteria failedCriterium)
         {
             var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
             failedCriterium = ItemMatchCriteria.None;
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.Artists) ?? false) && !TrackComparison.ArtistOneContained(audioItem, trackInfo, level))
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.Artists) ?? false) && !_trackComparison.ArtistOneContained(audioItem, trackInfo, level))
             {
                 failedCriterium = ItemMatchCriteria.Artists;
                 return false;
             }
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumName) ?? false) && !TrackComparison.AlbumNameEqual(audioItem, trackInfo, level).ComparisonResult)
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumName) ?? false) && !_trackComparison.AlbumNameEqual(audioItem, trackInfo, level).ComparisonResult)
             {
                 failedCriterium = ItemMatchCriteria.AlbumName;
                 return false;
             }
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumArtists) ?? false) && !TrackComparison.AlbumArtistOneContained(audioItem, trackInfo, level))
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumArtists) ?? false) && !_trackComparison.AlbumArtistOneContained(audioItem, trackInfo, level))
             {
                 failedCriterium = ItemMatchCriteria.AlbumArtists;
                 return false;
             }
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.TrackName) ?? false) && !TrackComparison.TrackNameEqual(audioItem, trackInfo, level).ComparisonResult)
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.TrackName) ?? false) && !_trackComparison.TrackNameEqual(audioItem, trackInfo, level).ComparisonResult)
             {
                 failedCriterium = ItemMatchCriteria.TrackName;
                 return false;
@@ -690,29 +698,30 @@ namespace Viperinius.Plugin.SpotifyImport
         protected bool TryGetCachedMatch(string providerId, ProviderTrackInfo providerTrackInfo, out DbProviderTrackMatch? match)
         {
             match = null;
-            if (Plugin.Instance == null)
-            {
-                return false;
-            }
+            return false;
+            // if (Plugin.Instance == null)
+            // {
+            //     return false;
+            // }
 
-            var trackId = _dbRepository.GetProviderTrackDbId(providerId, providerTrackInfo.Id);
-            if (trackId == null)
-            {
-                return false;
-            }
+            // var trackId = _dbRepository.GetProviderTrackDbId(providerId, providerTrackInfo.Id);
+            // if (trackId == null)
+            // {
+            //     return false;
+            // }
 
-            var matches = _dbRepository.GetProviderTrackMatch((long)trackId);
-            match = matches.FirstOrDefault(
-                potentialMatch =>
-                {
-                    // check if the cached match has compatible match level and criteria (meaning same or stricter requirements)
-                    var isLevelApplicable = potentialMatch?.Level <= Plugin.Instance.Configuration.ItemMatchLevel;
-                    var isCritApplicable = (potentialMatch?.Criteria & Plugin.Instance.Configuration.ItemMatchCriteria) == Plugin.Instance.Configuration.ItemMatchCriteria;
-                    return isLevelApplicable && isCritApplicable;
-                },
-                null);
+            // var matches = _dbRepository.GetProviderTrackMatch((long)trackId);
+            // match = matches.FirstOrDefault(
+            //     potentialMatch =>
+            //     {
+            //         // check if the cached match has compatible match level and criteria (meaning same or stricter requirements)
+            //         var isLevelApplicable = potentialMatch?.Level <= Plugin.Instance.Configuration.ItemMatchLevel;
+            //         var isCritApplicable = (potentialMatch?.Criteria & Plugin.Instance.Configuration.ItemMatchCriteria) == Plugin.Instance.Configuration.ItemMatchCriteria;
+            //         return isLevelApplicable && isCritApplicable;
+            //     },
+            //     null);
 
-            return match != null;
+            // return match != null;
         }
 
         protected bool SaveMatchInCache(string providerId, ProviderTrackInfo providerTrackInfo, Guid jellyfinTrackId)
@@ -734,17 +743,9 @@ namespace Viperinius.Plugin.SpotifyImport
         private void TestConsole(string args)
         {
             args = args.Replace("...", string.Empty, StringComparison.Ordinal);
-            // if (!Directory.Exists("/media/Music/spotdl"))
-            // {
-            //     _logger.LogError("Not seeing directory!");
-            // }
-            // else
-            // {
-            //     _logger.LogError("Directory found!");
-            // }
 
             string command = "/usr/bin/python3";
-            string arguments = "-m spotdl download" + args;
+            string arguments = "-m spotdl download" + args + " --output {album}/{title}";
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = command,
@@ -760,26 +761,26 @@ namespace Viperinius.Plugin.SpotifyImport
             {
                 process.StartInfo = startInfo;
 
-                // process.OutputDataReceived += (sender, e) =>
-                // {
-                //     if (e.Data != null)
-                //     {
-                //         _logger.LogInformation(
-                //                     "dataReceived{Data}",
-                //                     e.Data);
-                //     }
-                // };
+                process.OutputDataReceived += (sender, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        _logger.LogInformation(
+                                    "dataReceived{Data}",
+                                    e.Data);
+                    }
+                };
 
-                // // Handle error data line by line
-                // process.ErrorDataReceived += (sender, e) =>
-                // {
-                //     if (e.Data != null)
-                //     {
-                //         _logger.LogInformation(
-                //                     "ERRORdataReceived{Data}",
-                //                     e.Data);
-                //     }
-                // };
+                // Handle error data line by line
+                process.ErrorDataReceived += (sender, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        _logger.LogInformation(
+                                    "ERRORdataReceived{Data}",
+                                    e.Data);
+                    }
+                };
 
                 process.Start();
                 process.BeginOutputReadLine();

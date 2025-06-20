@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities.Audio;
+using Microsoft.Extensions.Logging;
 
 namespace Viperinius.Plugin.SpotifyImport.Matchers
 {
@@ -17,9 +18,16 @@ namespace Viperinius.Plugin.SpotifyImport.Matchers
         private static readonly AlbumFromTrackMatcher _albumFromTrackMatcher = new AlbumFromTrackMatcher();
         private static readonly FuzzyMatcher _fuzzyMatcher = new FuzzyMatcher();
 
+        private readonly ILogger<PlaylistSync> _logger;
+
         private static readonly Regex _parensRegex = new Regex(@"\s*[\(\[]([^\)\]]*)[\)\]]\s*$"); // find *last* occurence of (foo) or [foo]
 
-        private static SortedDictionary<int, List<string>> TrySplitParensContents(string? raw)
+        public TrackComparison(ILogger<PlaylistSync> logger)
+        {
+            _logger = logger;
+        }
+
+        private SortedDictionary<int, List<string>> TrySplitParensContents(string? raw)
         {
             var results = new SortedDictionary<int, List<string>>();
             if (string.IsNullOrWhiteSpace(raw))
@@ -73,8 +81,11 @@ namespace Viperinius.Plugin.SpotifyImport.Matchers
             return results;
         }
 
-        private static Result Equal(string? jellyfinName, string? providerName, ItemMatchLevel matchLevel)
+        private Result Equal(string? jellyfinName, string? providerName, ItemMatchLevel matchLevel)
         {
+#pragma warning disable CA1727 // Use PascalCase for named placeholders
+            _logger.LogInformation("This is equals: Comparing {jelly} with {provider}", jellyfinName, providerName);
+#pragma warning restore CA1727 // Use PascalCase for named placeholders
             if (string.IsNullOrEmpty(jellyfinName) || string.IsNullOrEmpty(providerName))
             {
                 return new Result(false);
@@ -164,7 +175,7 @@ namespace Viperinius.Plugin.SpotifyImport.Matchers
             return new Result(false);
         }
 
-        private static bool ListContains(IReadOnlyList<string>? jellyfinList, string? providerName, ItemMatchLevel matchLevel)
+        private bool ListContains(IReadOnlyList<string>? jellyfinList, string? providerName, ItemMatchLevel matchLevel)
         {
             if (jellyfinList == null)
             {
@@ -174,22 +185,23 @@ namespace Viperinius.Plugin.SpotifyImport.Matchers
             return jellyfinList.Where(j => Equal(j, providerName, matchLevel).ComparisonResult).Any();
         }
 
-        private static bool ListMatchOneItem(IReadOnlyList<string>? jellyfinList, IReadOnlyList<string> providerList, ItemMatchLevel matchLevel)
+        private bool ListMatchOneItem(IReadOnlyList<string>? jellyfinList, IReadOnlyList<string> providerList, ItemMatchLevel matchLevel)
         {
             return (jellyfinList?.Any(j => ListContains(providerList, j, matchLevel)) ?? false) || providerList.Any(p => ListContains(jellyfinList, p, matchLevel));
         }
 
-        public static Result TrackNameEqual(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public Result TrackNameEqual(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             return Equal(jfItem.Name, providerItem.Name, matchLevel);
         }
 
-        private static Result AlbumNameEqualInner(string? jfName, string? providerName, string? providerTrackName, ItemMatchLevel matchLevel)
+        private Result AlbumNameEqualInner(string? jfName, string? providerName, string? providerTrackName, ItemMatchLevel matchLevel)
         {
             if (!string.IsNullOrEmpty(providerTrackName) &&
                 matchLevel >= ItemMatchLevel.IgnoreParensPunctuationAndCaseUseAlbumFromTrack &&
                 AlbumFromTrackMatcher.TryGetAlbumNameFromTrack(providerTrackName, out var foundAlbum))
             {
+                _logger.LogInformation("using foundAlbum (bad)");
                 var result = Equal(jfName, foundAlbum, matchLevel);
                 if (result.ComparisonResult)
                 {
@@ -197,10 +209,11 @@ namespace Viperinius.Plugin.SpotifyImport.Matchers
                 }
             }
 
+            _logger.LogInformation("using providerName (good)");
             return Equal(jfName, providerName, matchLevel);
         }
 
-        public static Result AlbumNameEqual(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public Result AlbumNameEqual(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             var resultEntity = AlbumNameEqualInner(jfItem.AlbumEntity?.Name, providerItem.AlbumName, providerItem.Name, matchLevel);
             if (resultEntity.ComparisonResult)
@@ -211,31 +224,31 @@ namespace Viperinius.Plugin.SpotifyImport.Matchers
             return AlbumNameEqualInner(jfItem.Album, providerItem.AlbumName, providerItem.Name, matchLevel);
         }
 
-        public static Result AlbumNameEqual(MusicAlbum jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public Result AlbumNameEqual(MusicAlbum jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             return AlbumNameEqualInner(jfItem.Name, providerItem.AlbumName, providerItem.Name, matchLevel);
         }
 
-        public static bool AlbumArtistOneContained(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public bool AlbumArtistOneContained(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             var correctedMatchLevel = matchLevel >= ItemMatchLevel.Fuzzy ? ItemMatchLevel.IgnoreParensPunctuationAndCase : matchLevel;
             return ListMatchOneItem(jfItem.AlbumEntity?.Artists, providerItem.AlbumArtistNames, correctedMatchLevel) ||
                    ListMatchOneItem(jfItem.AlbumArtists, providerItem.AlbumArtistNames, correctedMatchLevel);
         }
 
-        public static bool AlbumArtistOneContained(MusicAlbum jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public bool AlbumArtistOneContained(MusicAlbum jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             var correctedMatchLevel = matchLevel >= ItemMatchLevel.Fuzzy ? ItemMatchLevel.IgnoreParensPunctuationAndCase : matchLevel;
             return ListMatchOneItem(jfItem.Artists, providerItem.AlbumArtistNames, correctedMatchLevel);
         }
 
-        public static bool ArtistOneContained(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public bool ArtistOneContained(Audio jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             var correctedMatchLevel = matchLevel >= ItemMatchLevel.Fuzzy ? ItemMatchLevel.IgnoreParensPunctuationAndCase : matchLevel;
             return ListMatchOneItem(jfItem.Artists, providerItem.ArtistNames, correctedMatchLevel);
         }
 
-        public static bool ArtistOneContained(MusicArtist jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
+        public bool ArtistOneContained(MusicArtist jfItem, ProviderTrackInfo providerItem, ItemMatchLevel matchLevel)
         {
             var correctedMatchLevel = matchLevel >= ItemMatchLevel.Fuzzy ? ItemMatchLevel.IgnoreParensPunctuationAndCase : matchLevel;
             return ListMatchOneItem(new List<string> { jfItem.Name }, providerItem.ArtistNames, correctedMatchLevel);
