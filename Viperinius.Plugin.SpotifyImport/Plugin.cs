@@ -27,7 +27,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     }
 
     /// <inheritdoc />
-    public override string Name => "Self Spotify Import";
+    public override string Name => "Spotify Import";
 
     /// <inheritdoc />
     public override Guid Id => Guid.Parse("F03D0ADB-289F-4986-BD6F-2468025249B3");
@@ -91,7 +91,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             new PluginPageInfo
             {
                 Name = "spotifyimportmap",
-                DisplayName = "Self Spotify Import - Map",
+                DisplayName = "Spotify Import - Map",
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.manualMapConfig.html", GetType().Namespace),
                 EnableInMainMenu = true,
             },

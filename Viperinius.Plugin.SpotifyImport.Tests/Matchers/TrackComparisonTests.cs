@@ -28,17 +28,17 @@ namespace Viperinius.Plugin.SpotifyImport.Tests.Matchers
             var prov = TrackHelper.CreateProviderItem(provName, "Album", new List<string> { "Artist On Album" }, new List<string> { "Just Artist" });
             var jf = TrackHelper.CreateJfItem(jfName, "Album", "Artist On Album", "Just Artist");
 
-            // var result = TrackComparison.TrackNameEqual(jf, prov, ItemMatchLevel.Default);
-            // if (shouldMatch)
-            // {
-            //     Assert.True(result.ComparisonResult, TrackHelper.GetErrorString(jf));
-            //     Assert.True(result.MatchedLevel <= ItemMatchLevel.Default, TrackHelper.GetErrorString(jf));
-            // }
-            // else
-            // {
-            //     Assert.False(result.ComparisonResult, TrackHelper.GetErrorString(jf));
-            //     Assert.True(result.MatchedLevel == null, TrackHelper.GetErrorString(jf));
-            // }
+            var result = TrackComparison.TrackNameEqual(jf, prov, ItemMatchLevel.Default);
+            if (shouldMatch)
+            {
+                Assert.True(result.ComparisonResult, TrackHelper.GetErrorString(jf));
+                Assert.True(result.MatchedLevel <= ItemMatchLevel.Default, TrackHelper.GetErrorString(jf));
+            }
+            else
+            {
+                Assert.False(result.ComparisonResult, TrackHelper.GetErrorString(jf));
+                Assert.True(result.MatchedLevel == null, TrackHelper.GetErrorString(jf));
+            }
         }
 
         class TrackDefaultDataMatch : IEnumerable<object[]>

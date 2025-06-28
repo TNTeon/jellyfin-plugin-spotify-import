@@ -32,7 +32,6 @@ namespace Viperinius.Plugin.SpotifyImport
         private readonly Dictionary<string, string> _userPlaylistIds;
         private readonly ManualMapStore _manualMapStore;
         private readonly DbRepository _dbRepository;
-        private TrackComparison _trackComparison;
 
         public PlaylistSync(
             ILogger<PlaylistSync> logger,
@@ -52,7 +51,6 @@ namespace Viperinius.Plugin.SpotifyImport
             _userPlaylistIds = userPlaylistIds;
             _manualMapStore = manualMapStore;
             _dbRepository = dbRepository;
-            _trackComparison = new TrackComparison(_logger);
         }
 
         public async Task Execute(IProgress<double> progress, CancellationToken cancellationToken = default)
@@ -147,17 +145,17 @@ namespace Viperinius.Plugin.SpotifyImport
                 allMissingTracks.AddRange(missingTracks);
                 progressValue = nextProgress;
                 progress.Report(progressValue);
+
+                TestConsole(providerPlaylist.Name, "https://open.spotify.com/playlist/" + providerPlaylist.Id);
             }
 
             var combineIDString = string.Empty;
             foreach (var missedTrack in allMissingTracks)
             {
                 combineIDString += " https://open.spotify.com/track/" + missedTrack.Id;
-                // _logger.LogInformation("downloading missedTrack {ID}", missedTrack.Id);
             }
 
-            // _logger.LogInformation("Will run command: -m spotdl download {IDs}", combineIDString);
-            TestConsole(combineIDString);
+            // TestConsole(combineIDString);
         }
 
         private async Task<List<ProviderTrackInfo>> FindTracksAndAddToPlaylist(Playlist playlist, ProviderPlaylistInfo providerPlaylistInfo, User user, IProgress<double> progress, Tuple<double, double> progressRange, CancellationToken cancellationToken)
@@ -195,7 +193,6 @@ namespace Viperinius.Plugin.SpotifyImport
                     }
                     else
                     {
-                        // TestConsole(providerTrack.Id);
                         missingTracks.Add(providerTrack);
                     }
                 }
@@ -434,7 +431,7 @@ namespace Viperinius.Plugin.SpotifyImport
             if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.Artists) ?? false)
             {
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
-                if (!_trackComparison.ArtistOneContained(artist, providerTrackInfo, level))
+                if (!TrackComparison.ArtistOneContained(artist, providerTrackInfo, level))
                 {
                     _logger.LogInformation("Tracking artist: {Artist} : Second one is: {TrackInfo}", artist, providerTrackInfo.ArtistNames);
                     if (Plugin.Instance?.Configuration.EnableVerboseLogging ?? false)
@@ -458,7 +455,7 @@ namespace Viperinius.Plugin.SpotifyImport
             if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumArtists) ?? false)
             {
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
-                return _trackComparison.AlbumArtistOneContained(album, providerTrackInfo, level);
+                return TrackComparison.AlbumArtistOneContained(album, providerTrackInfo, level);
             }
 
             return true;
@@ -466,9 +463,8 @@ namespace Viperinius.Plugin.SpotifyImport
 
         private MusicAlbum? GetAlbum(MusicArtist artist, ProviderTrackInfo providerTrackInfo, ref int nextAlbumIndex)
         {
-            _logger.LogInformation("artist reads: {Artist} With ID: {ID}", artist, artist.Id);
-            _logger.LogInformation("artist.Children reads: {Children}", artist.Children);
             var albums = artist.Children;
+            _logger.LogInformation("artist.Children reads: {Children}", albums);
             if (!albums.Any())
             {
                 // for whatever reason albums are apparently not always set as children of the artist... so try to find them using album artist
@@ -477,9 +473,7 @@ namespace Viperinius.Plugin.SpotifyImport
                     AlbumArtistIds = new[] { artist.Id },
                     IncludeItemTypes = new[] { BaseItemKind.MusicAlbum }
                 });
-                _logger.LogInformation("No children, finding albums: {Albums}", albums);
                 albums ??= new List<MediaBrowser.Controller.Entities.BaseItem>();
-                _logger.LogInformation("No children, finding albums: {Albums}", albums);
             }
 
             var item = albums.ElementAtOrDefault(nextAlbumIndex);
@@ -503,7 +497,8 @@ namespace Viperinius.Plugin.SpotifyImport
             if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumName) ?? false)
             {
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
-                if (!_trackComparison.AlbumNameEqual(album, providerTrackInfo, level).ComparisonResult)
+                _logger.LogInformation("lets compare:{AlbumName}, with {ProviderName}", album.Name, providerTrackInfo.AlbumName);
+                if (TrackComparison.AlbumNameEqual(album, providerTrackInfo, level).ComparisonResult)
                 {
                     if (Plugin.Instance?.Configuration.EnableVerboseLogging ?? false)
                     {
@@ -539,7 +534,7 @@ namespace Viperinius.Plugin.SpotifyImport
                 var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
                 if (Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.TrackName) ?? false)
                 {
-                    var checkResult = _trackComparison.TrackNameEqual(item, providerTrackInfo, level);
+                    var checkResult = TrackComparison.TrackNameEqual(item, providerTrackInfo, level);
                     if (!checkResult.ComparisonResult || checkResult.MatchedLevel == null || checkResult.MatchedPrio == null)
                     {
                         continue;
@@ -591,30 +586,30 @@ namespace Viperinius.Plugin.SpotifyImport
             return false;
         }
 
-        private bool ItemMatchesTrackInfo(Audio audioItem, ProviderTrackInfo trackInfo, out ItemMatchCriteria failedCriterium)
+        private static bool ItemMatchesTrackInfo(Audio audioItem, ProviderTrackInfo trackInfo, out ItemMatchCriteria failedCriterium)
         {
             var level = Plugin.Instance?.Configuration.ItemMatchLevel ?? ItemMatchLevel.Default;
             failedCriterium = ItemMatchCriteria.None;
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.Artists) ?? false) && !_trackComparison.ArtistOneContained(audioItem, trackInfo, level))
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.Artists) ?? false) && !TrackComparison.ArtistOneContained(audioItem, trackInfo, level))
             {
                 failedCriterium = ItemMatchCriteria.Artists;
                 return false;
             }
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumName) ?? false) && !_trackComparison.AlbumNameEqual(audioItem, trackInfo, level).ComparisonResult)
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumName) ?? false) && !TrackComparison.AlbumNameEqual(audioItem, trackInfo, level).ComparisonResult)
             {
                 failedCriterium = ItemMatchCriteria.AlbumName;
                 return false;
             }
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumArtists) ?? false) && !_trackComparison.AlbumArtistOneContained(audioItem, trackInfo, level))
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.AlbumArtists) ?? false) && !TrackComparison.AlbumArtistOneContained(audioItem, trackInfo, level))
             {
                 failedCriterium = ItemMatchCriteria.AlbumArtists;
                 return false;
             }
 
-            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.TrackName) ?? false) && !_trackComparison.TrackNameEqual(audioItem, trackInfo, level).ComparisonResult)
+            if ((Plugin.Instance?.Configuration.ItemMatchCriteria.HasFlag(ItemMatchCriteria.TrackName) ?? false) && !TrackComparison.TrackNameEqual(audioItem, trackInfo, level).ComparisonResult)
             {
                 failedCriterium = ItemMatchCriteria.TrackName;
                 return false;
@@ -698,6 +693,7 @@ namespace Viperinius.Plugin.SpotifyImport
         protected bool TryGetCachedMatch(string providerId, ProviderTrackInfo providerTrackInfo, out DbProviderTrackMatch? match)
         {
             match = null;
+            _logger.LogInformation("successful update!");
             return false;
             // if (Plugin.Instance == null)
             // {
@@ -740,12 +736,23 @@ namespace Viperinius.Plugin.SpotifyImport
             return insertedId != null;
         }
 
-        private void TestConsole(string args)
+        private void TestConsole(string args, string link)
         {
-            args = args.Replace("...", string.Empty, StringComparison.Ordinal);
-
             string command = "/usr/bin/python3";
-            string arguments = "-m spotdl download" + args + " --output {album}/{title}";
+            string arguments;
+            args = RemoveSpecialCharacters(args) + ".spotdl";
+            _logger.LogInformation("syncfile name is {Name}", args);
+            if (File.Exists("/media/Music/spotdl/" + args))
+            {
+                arguments = "-m spotdl sync " + args + " --output {artist}/{album}/{title} --sync-without-deleting --max-retries 100";
+                _logger.LogInformation("file exists! Running:{Command}", arguments);
+            }
+            else
+            {
+                arguments = "-m spotdl sync " + link + " --save-file " + args + " --output {artist}/{album}/{title} --max-retries 100";
+                _logger.LogInformation("file does not exists! Running:{Command}", arguments);
+            }
+
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = command,
@@ -787,6 +794,20 @@ namespace Viperinius.Plugin.SpotifyImport
                 process.BeginErrorReadLine();
                 process.WaitForExit();
             }
+        }
+
+        private string RemoveSpecialCharacters(string str)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (char c in str)
+            {
+                if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_')
+                {
+                    sb.Append(c);
+                }
+            }
+
+            return sb.ToString();
         }
     }
 }
