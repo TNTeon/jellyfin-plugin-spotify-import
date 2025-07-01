@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -32,6 +33,7 @@ namespace Viperinius.Plugin.SpotifyImport
         private readonly Dictionary<string, string> _userPlaylistIds;
         private readonly ManualMapStore _manualMapStore;
         private readonly DbRepository _dbRepository;
+        private static readonly HttpClient _client = new HttpClient();
 
         public PlaylistSync(
             ILogger<PlaylistSync> logger,
@@ -146,7 +148,7 @@ namespace Viperinius.Plugin.SpotifyImport
                 progressValue = nextProgress;
                 progress.Report(progressValue);
 
-                TestConsole(providerPlaylist.Name, "https://open.spotify.com/playlist/" + providerPlaylist.Id);
+                // TestConsole(providerPlaylist.Name, "https://open.spotify.com/playlist/" + providerPlaylist.Id);
             }
 
             var combineIDString = string.Empty;
@@ -156,6 +158,7 @@ namespace Viperinius.Plugin.SpotifyImport
             }
 
             // TestConsole(combineIDString);
+            SendDownloadMessage();
         }
 
         private async Task<List<ProviderTrackInfo>> FindTracksAndAddToPlaylist(Playlist playlist, ProviderPlaylistInfo providerPlaylistInfo, User user, IProgress<double> progress, Tuple<double, double> progressRange, CancellationToken cancellationToken)
@@ -194,6 +197,8 @@ namespace Viperinius.Plugin.SpotifyImport
                     else
                     {
                         missingTracks.Add(providerTrack);
+                        _logger.LogInformation("sending download request");
+                        QueueSongDownload(providerTrack.Name, providerTrack.ArtistNames[0] ??= string.Empty);
                     }
                 }
 
@@ -794,6 +799,30 @@ namespace Viperinius.Plugin.SpotifyImport
                 process.BeginErrorReadLine();
                 process.WaitForExit();
             }
+        }
+
+        private async void QueueSongDownload(string title, string artist)
+        {
+#pragma warning disable CA1307 // Specify StringComparison for clarity
+            title = RemoveSpecialCharacters(title).Replace(" ", "%20");
+            artist = RemoveSpecialCharacters(artist).Replace(" ", "%20");
+#pragma warning restore CA1307 // Specify StringComparison for clarity
+
+            _logger.LogInformation("requesting {Title} by {Artist}", title, artist);
+
+            var response = await _client.PostAsync("http://localhost:8097/add?title=" + title + "&artist=" + artist, null).ConfigureAwait(false);
+            var responseString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            _logger.LogInformation("http response: {Resposne}", responseString);
+        }
+
+        private async void SendDownloadMessage()
+        {
+            var response = await _client.PostAsync("http://localhost:8097/submit", null).ConfigureAwait(false);
+
+            var responseString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            _logger.LogInformation("http response: {Resposne}", responseString);
         }
 
         private string RemoveSpecialCharacters(string str)
